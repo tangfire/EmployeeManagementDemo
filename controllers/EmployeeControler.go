@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"EmployeeManagementDemo/config"
 	"EmployeeManagementDemo/models"
 	"EmployeeManagementDemo/services"
 	"github.com/gin-gonic/gin"
@@ -44,4 +45,31 @@ func Register(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "注册成功"})
+}
+
+// controllers/user.go
+func GetProfile(c *gin.Context) {
+	userID, _ := c.Get("userID")
+	role, _ := c.Get("userRole")
+
+	var profile interface{}
+	var err error
+
+	// 根据角色查询不同表
+	if role == "admin" {
+		var admin models.Admin
+		err = config.DB.First(&admin, userID).Error
+		profile = admin.ToProfileResponse()
+	} else {
+		var emp models.Employee
+		err = config.DB.First(&emp, userID).Error
+		profile = emp.ToProfileResponse()
+	}
+
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, profile)
 }

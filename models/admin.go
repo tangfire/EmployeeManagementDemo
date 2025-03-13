@@ -36,3 +36,19 @@ func (a *Admin) GetUsername() string {
 func (a *Admin) GetRole() string {
 	return "admin" // 标识角色为管理员
 }
+
+type AdminProfileResponse struct {
+	AdminID   uint   `json:"admin_id"`
+	AdminName string `json:"username"`
+	Email     string `json:"email"`
+	Phone     string `json:"phone"`
+}
+
+func (a *Admin) ToProfileResponse() AdminProfileResponse {
+	return AdminProfileResponse{
+		AdminID:   a.AdminID,
+		AdminName: a.AdminName,
+		Email:     a.AdminEmail,
+		Phone:     a.AdminPhone,
+	}
+}
