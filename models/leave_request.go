@@ -1,25 +1,23 @@
 // Package models models/leave_request.go
 package models
 
-import (
-	"time"
-)
+import "time"
 
 type LeaveRequest struct {
-	ID        uint      `gorm:"primaryKey;autoIncrement;column:id"` // 主键自增
-	AdminID   uint      `gorm:"column:admin_id"`                    // 外键（关联管理员表）
-	EmpID     uint      `gorm:"column:emp_id"`                      // 外键（关联员工表）
-	Reason    string    `gorm:"type:text;size:100;not null"`        // 非空，长度限制
-	StartTime time.Time `gorm:"type:datetime;not null"`             // 非空时间
-	EndTime   time.Time `gorm:"type:datetime;not null"`             // 非空时间
-	Status    string    `gorm:"type:enum('pending','approved','rejected');default:'pending'"`
+	ID        uint       `gorm:"primaryKey;autoIncrement;column:id"`
+	AdminID   *uint      `gorm:"column:admin_id;index"` // 使用指针，允许为空
+	EmpID     *uint      `gorm:"column:emp_id;index"`   // 使用指针，允许为空
+	Reason    string     `gorm:"type:text;size:100;not null"`
+	StartTime *time.Time `gorm:"type:datetime;not null"`
+	EndTime   *time.Time `gorm:"type:datetime;not null"`
+	Status    string     `gorm:"type:enum('pending','approved','rejected');default:'pending'"`
 
-	// 关联模型（按需定义）
-	Admin Admin    `gorm:"foreignKey:AdminID"` // 关联管理员
-	User  Employee `gorm:"foreignKey:EmpID"`   // 关联员工
+	// 明确指定外键关系（重要修正）
+	Admin    *Admin    `gorm:"foreignKey:AdminID;references:AdminID"`
+	Employee *Employee `gorm:"foreignKey:EmpID;references:EmpID"`
 }
 
-// TableName 自定义表名
+// TableName models/leave_request.go
 func (LeaveRequest) TableName() string {
-	return "leave_requests"
+	return "leave_requests" // 确保与数据库表名一致
 }
