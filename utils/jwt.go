@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"EmployeeManagementDemo/services"
+	"EmployeeManagementDemo/models"
 	"github.com/golang-jwt/jwt/v4"
 	"time"
 )
@@ -14,11 +14,12 @@ type Claims struct {
 	jwt.RegisteredClaims        // 替换 StandardClaims
 }
 
-func GenerateJWT(user services.User) (string, error) {
+func GenerateJWT(user models.User) (string, error) {
 	claims := Claims{
 		UserID: user.GetID(),
 		Role:   user.GetRole(),
 		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(time.Now()), // 新增：设置签发时间
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			Issuer:    "EmployeeManagement",
 		},

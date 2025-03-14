@@ -4,23 +4,17 @@ import (
 	"EmployeeManagementDemo/config"
 	"EmployeeManagementDemo/models"
 	"EmployeeManagementDemo/services"
+	"EmployeeManagementDemo/utils"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"time"
 )
 
 // controllers/LoginAuth.go
-type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=4,max=20"`
-	Password string `json:"password" binding:"required,min=6,max=20"`
-	Email    string `json:"email" binding:"required,email"`
-	Phone    string `json:"phone" binding:"required,len=11"`
-}
-
-// controllers/LoginAuth.go
 func Register(c *gin.Context) {
-	var req RegisterRequest
+	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		c.JSON(http.StatusBadRequest, utils.TranslateValidationErrors(err))
 		return
 	}
 
@@ -47,29 +41,117 @@ func Register(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "注册成功"})
 }
 
-// controllers/user.go
-func GetProfile(c *gin.Context) {
-	userID, _ := c.Get("userID")
-	role, _ := c.Get("userRole")
-
-	var profile interface{}
-	var err error
-
-	// 根据角色查询不同表
-	if role == "admin" {
-		var admin models.Admin
-		err = config.DB.First(&admin, userID).Error
-		profile = admin.ToProfileResponse()
-	} else {
-		var emp models.Employee
-		err = config.DB.First(&emp, userID).Error
-		profile = emp.ToProfileResponse()
-	}
-
+func SignIn(c *gin.Context) {
+	// 获取当前用户ID（假设只有员工可以签到）
+	userID, err := utils.GetCurrentUserID(c)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	c.JSON(http.StatusOK, profile)
+	// 检查当天是否已签到
+	var existingRecord models.SignRecord
+	today := time.Now().Format("2006-01-02")
+	result := config.DB.Where("emp_id = ? AND date = ?", userID, today).First(&existingRecord)
+
+	if result.Error == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "今日已签到"})
+		return
+	}
+
+	// 创建签到记录
+	now := time.Now()
+	newRecord := models.SignRecord{
+		EmpID:      userID,
+		SignInTime: &now,
+		Date:       now,
+	}
+
+	if err := config.DB.Create(&newRecord).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "签到失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "签到成功",
+		"sign_in_time": now.Format(time.RFC3339),
+	})
+}
+
+func SignOut(c *gin.Context) {
+	userID, err := utils.GetCurrentUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	// 查找当天未签退的记录
+	var record models.SignRecord
+	today := time.Now().Format("2006-01-02")
+	result := config.DB.Where("emp_id = ? AND date = ? AND sign_out_time IS NULL", userID, today).First(&record)
+
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "未找到有效签到记录"})
+		return
+	}
+
+	// 更新签退时间
+	now := time.Now()
+	record.SignOutTime = &now
+	if err := config.DB.Save(&record).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "签退失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "签退成功",
+		"sign_out_time": now.Format(time.RFC3339),
+	})
+}
+
+func CreateLeaveRequest(c *gin.Context) {
+	// 获取当前登录员工ID
+	empID, err := utils.GetCurrentUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+		return
+	}
+
+	var req models.CreateLeaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误: " + err.Error()})
+		return
+	}
+
+	// 创建请假记录
+	leave := models.LeaveRequest{
+		EmpID:     &empID,
+		Reason:    req.Reason,
+		StartTime: &req.StartTime,
+		EndTime:   &req.EndTime,
+		Status:    "pending",
+	}
+
+	if err := config.DB.Create(&leave).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "提交失败"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "请假申请已提交",
+		"id":      leave.ID,
+	})
+}
+
+func GetMyLeaveRequests(c *gin.Context) {
+	empID, err := utils.GetCurrentUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录"})
+		return
+	}
+
+	var leaves []models.LeaveRequest
+	config.DB.Where("emp_id = ?", empID).Find(&leaves)
+
+	c.JSON(http.StatusOK, leaves)
 }

@@ -52,3 +52,12 @@ func (a *Admin) ToProfileResponse() AdminProfileResponse {
 		Phone:     a.AdminPhone,
 	}
 }
+
+// models/admin.go
+func (a *Admin) GetPassword() string {
+	return a.AdminPassword
+}
+
+func (a *Admin) SetPassword(pwd string) {
+	a.AdminPassword = pwd
+}

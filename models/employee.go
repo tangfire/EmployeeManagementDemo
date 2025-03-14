@@ -1,18 +1,24 @@
 package models
 
-import "golang.org/x/crypto/bcrypt"
+import (
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
+)
 
 type Employee struct {
-	EmpID    uint   `gorm:"primaryKey;autoIncrement;column:emp_id"`
-	DepID    uint   `gorm:"column:dep_id"`
-	Username string `gorm:"type:varchar(20);not null;unique;column:username"`
-	Password string `gorm:"type:varchar(200);not null"`
-	Gender   string `gorm:"type:varchar(10)"`
-	Email    string `gorm:"type:varchar(50)"`
-	Phone    string `gorm:"type:varchar(11)"`
-	Avatar   string `gorm:"type:varchar(100)"`
-	Address  string `gorm:"type:varchar(10)"`
-	Salary   int    `gorm:"type:int(10)"`
+	EmpID     uint           `gorm:"primaryKey;autoIncrement;column:emp_id"`
+	DepID     uint           `gorm:"column:dep_id"`
+	Username  string         `gorm:"type:varchar(20);not null;unique;column:username"`
+	Password  string         `gorm:"type:varchar(200);not null"`
+	Position  string         `gorm:"type:varchar(50)"` // 职位
+	Gender    string         `gorm:"type:varchar(10)"`
+	Email     string         `gorm:"type:varchar(50)"`
+	Phone     string         `gorm:"type:varchar(11)"`
+	Avatar    string         `gorm:"type:varchar(100)"`
+	Address   string         `gorm:"type:varchar(10)"`
+	Salary    int            `gorm:"type:int(10)"`
+	Status    string         `gorm:"type:varchar(20);default:'在职'"` // 状态（在职/离职）
+	DeletedAt gorm.DeletedAt `gorm:"index"`                         // 软删除字段
 }
 
 func (Employee) TableName() string {
@@ -55,4 +61,13 @@ func (e *Employee) ToProfileResponse() EmployeeProfileResponse {
 		Phone:    e.Phone,
 		DepID:    e.DepID,
 	}
+}
+
+// models/employee.go
+func (e *Employee) GetPassword() string {
+	return e.Password
+}
+
+func (e *Employee) SetPassword(pwd string) {
+	e.Password = pwd
 }

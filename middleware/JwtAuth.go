@@ -10,6 +10,7 @@ import (
 
 func JWTAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "未提供访问令牌"})
@@ -24,6 +25,7 @@ func JWTAuth() gin.HandlerFunc {
 
 		tokenString := parts[1]
 
+		// 将 claims 存入上下文
 		claims, err := utils.ParseJWT(tokenString)
 		if err != nil {
 			statusCode := http.StatusUnauthorized
@@ -39,6 +41,8 @@ func JWTAuth() gin.HandlerFunc {
 
 		c.Set("userID", claims.UserID)
 		c.Set("userRole", claims.Role)
+		// 新增：
+		c.Set("claims", claims) // 将整个 claims 对象存入上下文
 		c.Next()
 	}
 }
