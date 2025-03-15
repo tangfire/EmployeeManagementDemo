@@ -4,10 +4,11 @@ import "time"
 
 // controllers/LoginAuth.go
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=4,max=20"`
-	Password string `json:"password" binding:"required,min=6,max=20"`
-	Email    string `json:"email" binding:"required,email"`
-	Phone    string `json:"phone" binding:"required,len=11"`
+	Username        string `json:"username" binding:"required,min=4,max=20"`
+	Password        string `json:"password" binding:"required,min=6,max=20"`
+	ConfirmPassword string `json:"confirmPassword" binding:"required,min=6,max=20"`
+	Email           string `json:"email" binding:"required,email"`
+	Phone           string `json:"phone" binding:"required,len=11"`
 }
 
 type AdminRegisterRequest struct {

@@ -14,14 +14,19 @@ import (
 func Register(c *gin.Context) {
 	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.TranslateValidationErrors(err))
+		c.JSON(http.StatusBadRequest, models.Error(400, utils.TranslateValidationErrors(err)))
+		return
+	}
+
+	if req.Password != req.ConfirmPassword {
+		c.JSON(http.StatusBadRequest, models.Error(400, "两次密码输入不相同"))
 		return
 	}
 
 	// 密码加密
 	hashedPassword, err := services.HashPassword(req.Password)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码加密失败"})
+		c.JSON(http.StatusInternalServerError, models.Error(500, "密码加密失败"))
 		return
 	}
 
@@ -34,11 +39,18 @@ func Register(c *gin.Context) {
 	}
 
 	if err := services.CreateEmployee(&emp); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "用户名已存在"})
+		c.JSON(http.StatusConflict, models.Error(409, "用户名已存在"))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "注册成功"})
+	//c.JSON(http.StatusOK, gin.H{"message": "注册成功"})
+	// 注册成功时
+	c.JSON(http.StatusOK, models.ApiResponse{
+		Code:      200,
+		Message:   "注册成功",
+		Data:      emp,
+		Timestamp: time.Now().Unix(),
+	})
 }
 
 func SignIn(c *gin.Context) {
@@ -125,10 +137,10 @@ func CreateLeaveRequest(c *gin.Context) {
 
 	// 创建请假记录
 	leave := models.LeaveRequest{
-		EmpID:     &empID,
+		EmpID:     empID,
 		Reason:    req.Reason,
-		StartTime: &req.StartTime,
-		EndTime:   &req.EndTime,
+		StartTime: req.StartTime,
+		EndTime:   req.EndTime,
 		Status:    "pending",
 	}
 

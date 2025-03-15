@@ -17,26 +17,30 @@ func AdminRegister(c *gin.Context) {
 
 	// 参数绑定验证
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": utils.TranslateValidationErrors(err)})
+		//c.JSON(http.StatusBadRequest, gin.H{"error": utils.TranslateValidationErrors(err)})
+		c.JSON(http.StatusBadRequest, models.Error(400, utils.TranslateValidationErrors(err)))
 		return
 	}
 
 	// 验证管理员密钥
 	if valid := services.ValidateAdminSecret(req.SecretKey); !valid {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无效的管理员密钥"})
+		//c.JSON(http.StatusForbidden, gin.H{"error": "无效的管理员密钥"})
+		c.JSON(http.StatusForbidden, models.Error(400, "无效的管理员密钥"))
 		return
 	}
 
 	// 检查用户名是否存在
 	if exists, _ := services.CheckAdminNameExists(req.Username); exists {
-		c.JSON(http.StatusConflict, gin.H{"error": "管理员用户名已存在"})
+		//c.JSON(http.StatusConflict, gin.H{"error": "管理员用户名已存在"})
+		c.JSON(http.StatusConflict, models.Error(400, "管理员用户名已存在"))
+
 		return
 	}
 
 	// 密码加密
 	hashedPassword, err := services.HashPassword(req.Password)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码处理失败"})
+		c.JSON(http.StatusInternalServerError, models.Error(500, "密码处理失败"))
 		return
 	}
 
@@ -51,19 +55,21 @@ func AdminRegister(c *gin.Context) {
 
 	// 创建管理员
 	if err := services.CreateAdmin(&newAdmin); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建管理员失败"})
+		c.JSON(http.StatusInternalServerError, models.Error(500, "创建管理员失败"))
 		return
 	}
 
 	// 返回创建成功响应（隐藏敏感信息）
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "管理员账号创建成功",
-		"data": gin.H{
-			"admin_id": newAdmin.AdminID,
-			"username": newAdmin.AdminName,
-			"email":    newAdmin.AdminEmail,
-		},
-	})
+	//c.JSON(http.StatusCreated, gin.H{
+	//	"message": "管理员账号创建成功",
+	//	"data": gin.H{
+	//		"admin_id": newAdmin.AdminID,
+	//		"username": newAdmin.AdminName,
+	//		"email":    newAdmin.AdminEmail,
+	//	},
+	//})
+
+	c.JSON(http.StatusOK, models.Success(newAdmin))
 }
 
 func CreateEmployee(c *gin.Context) {
@@ -191,14 +197,38 @@ func UpdateEmployee(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "员工信息更新成功"})
 }
 
+// DeleteEmployee godoc
+// @Summary 删除员工
+// @Description 根据员工ID删除员工
+// @Tags 员工管理
+// @Accept json
+// @Produce json
+// @Param id path int true "员工ID"
+// @Security BearerAuth
+// @Success 200 {object} map[string]string "成功响应"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "内部错误"
+// @Router /employees/{id} [delete]
 func DeleteEmployee(c *gin.Context) {
 	empID := c.Param("emp_id")
+	adminId, err := utils.GetCurrentUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录!"})
+		return
+	}
 
 	// 执行删除（硬删除，如需软删除需修改模型）
 	if err := config.DB.Delete(&models.Employee{}, empID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败: " + err.Error()})
 		return
 	}
+
+	// 发送操作日志
+	services.SendLogToRabbitMQ(map[string]interface{}{
+		"user_id":   adminId,
+		"action":    "delete_employee",
+		"target_id": empID,
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "员工删除成功"})
 }

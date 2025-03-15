@@ -2,6 +2,7 @@ package main
 
 import (
 	"EmployeeManagementDemo/config"
+	_ "EmployeeManagementDemo/docs" // 重要！导入生成的 docs 包
 	"EmployeeManagementDemo/models"
 	"EmployeeManagementDemo/routes"
 	"EmployeeManagementDemo/services"
@@ -9,6 +10,8 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	amqp "github.com/rabbitmq/amqp091-go"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"log"
 	"os"
 	"os/signal"
@@ -16,6 +19,23 @@ import (
 	"time"
 )
 
+// @title 员工管理系统 API 文档
+// @version 1.0
+// @description 包含部门/员工管理等接口
+
+// @contact.name API Support
+// @contact.url http://example.com
+// @contact.email support@company.com
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+
+// @host localhost:8080
+// @BasePath /api/v1
 func main() {
 	// 初始化 MySQL 并自动迁移表结构
 	setupDatabase()
@@ -27,9 +47,20 @@ func main() {
 
 	// 启动日志消费者
 	services.StartLogConsumer()
+	log.Println("消息队列访问地址：\nhttp://localhost:15673/")
 
 	// 初始化 Gin 引擎
 	router := gin.Default()
+
+	// 添加 Swagger 路由
+	//生产环境：建议通过环境变量禁用 Swagger：
+	if os.Getenv("ENV") != "prod" {
+		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
+
+	log.Println("首次生成文档，在项目根目录执行：swag init -g main.go --output docs")
+	log.Println("文档更新：每次修改注释后需重新运行 swag init")
+	log.Println("Swagger访问地址：\nhttp://localhost:8080/swagger/index.html")
 
 	// 消息队列测试
 	//sendMessageTest()
@@ -39,7 +70,7 @@ func main() {
 	// ---------- 新增：配置 CORS ----------
 	router.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
-			"http://localhost:3000",       // 前端开发环境地址
+			"http://localhost:5181",       // 前端开发环境地址
 			"https://your-production.com", // 生产环境地址（按需修改）
 		},
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -79,20 +110,19 @@ func setupDatabase() {
 
 	// 调整迁移顺序确保基础表先创建
 	err := config.DB.AutoMigrate(
-		&models.Department{},
 		&models.Admin{},
+		&models.Department{},
 		&models.Employee{},
 		&models.SignRecord{},
 		&models.LeaveRequest{},
 		&models.OperationLog{},
-		// 依赖员工和管理员
-
 	)
 	if err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	} else {
 		log.Println("所有表已创建/更新")
 	}
+
 }
 
 // 注册路由

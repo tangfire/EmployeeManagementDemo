@@ -8,7 +8,7 @@ import (
 )
 
 // 认证逻辑
-func AuthenticateUser(username, password string) (models.User, error) {
+func AuthenticateUser(username, password string) (models.BaseUser, error) {
 	// 先尝试查找管理员
 	admin, err := dao.GetAdminByUsername(username)
 	if err == nil && admin.CheckPassword(password) {

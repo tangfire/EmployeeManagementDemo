@@ -477,3 +477,305 @@ err := config.Rdb.Set(config.Ctx, invalidateKey, time.Now().Unix(), 7*24*time.Ho
 - **若需永久封禁**：需结合用户状态字段和登录校验。
 - **排查方向**：检查新 Token 的 `iat`、Redis 数据、中间件日志。
 
+
+
+# 集成Swagger
+
+以下是为你的项目集成 Swagger 的完整方案：
+
+---
+
+### **一、安装依赖**
+```bash
+# 安装 swag 工具（用于生成文档）
+go install github.com/swaggo/swag/cmd/swag@latest
+
+# 安装 Gin 的 Swagger 扩展
+go get -u github.com/swaggo/gin-swagger
+go get -u github.com/swaggo/files
+```
+
+---
+
+### **二、添加 Swagger 注释**
+
+#### 1. 在 `main.go` 添加全局注释
+```go
+// @title 员工管理系统 API 文档
+// @version 1.0
+// @description 包含部门/员工管理等接口
+
+// @contact.name API Support
+// @contact.url http://example.com
+// @contact.email support@company.com
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+
+// @host localhost:8080
+// @BasePath /api/v1
+func main() {
+    // ... 原有代码 ...
+}
+```
+
+#### 2. 在控制器中添加接口注释（示例：`controllers/department_controller.go`）
+```go
+// DeleteDepartment godoc
+// @Summary 删除部门
+// @Description 根据部门ID删除部门
+// @Tags 部门管理
+// @Accept json
+// @Produce json
+// @Param id path int true "部门ID"
+// @Security BearerAuth
+// @Success 200 {object} map[string]string "成功响应"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "内部错误"
+// @Router /departments/{id} [delete]
+func DeleteDepartment(c *gin.Context) {
+    // ... 原有代码 ...
+}
+```
+
+#### 3. 在 `controllers/employee_controller.go` 添加类似注释
+```go
+// DeleteEmployee godoc
+// @Summary 删除员工
+// @Description 根据员工ID删除员工
+// @Tags 员工管理
+// @Accept json
+// @Produce json
+// @Param id path int true "员工ID"
+// @Security BearerAuth
+// @Success 200 {object} map[string]string "成功响应"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "内部错误"
+// @Router /employees/{id} [delete]
+func DeleteEmployee(c *gin.Context) {
+    // ... 原有代码 ...
+}
+```
+
+---
+
+### **三、生成文档**
+在项目根目录执行：
+```bash
+swag init -g main.go --output docs
+```
+
+---
+
+### **四、配置路由**
+在 `main.go` 或路由配置文件中添加：
+```go
+import (
+    _ "EmployeeManagementDemo/docs" // 重要！导入生成的 docs 包
+    "github.com/gin-gonic/gin"
+    swaggerFiles "github.com/swaggo/files"
+    ginSwagger "github.com/swaggo/gin-swagger"
+)
+
+func setupRouter() *gin.Engine {
+    r := gin.Default()
+    
+    // 添加 Swagger 路由
+    r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+    
+    // 其他路由...
+    return r
+}
+```
+
+---
+
+### **五、验证访问**
+启动服务后访问：  
+http://localhost:8080/swagger/index.html
+
+---
+
+### **六、完整示例文件结构**
+```
+├── docs
+│   ├── docs.go         (自动生成)
+│   ├── swagger.json
+│   └── swagger.yaml
+├── main.go
+├── controllers
+│   ├── department_controller.go
+│   └── employee_controller.go
+```
+
+---
+
+### **关键注意事项**
+1. **认证集成**：如果使用 JWT，需在 Swagger 的 `securityDefinitions` 中配置
+2. **响应模型**：建议定义统一响应结构体（示例）：
+```go
+type Response struct {
+    Code    int         `json:"code"`
+    Message string      `json:"message"`
+    Data    interface{} `json:"data"`
+}
+```
+3. **文档更新**：每次修改注释后需重新运行 `swag init`
+4. **生产环境**：建议通过环境变量禁用 Swagger：
+```go
+if os.Getenv("ENV") != "prod" {
+    r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+}
+```
+
+---
+
+### **常见问题解决**
+1. **404 错误**：
+  - 检查是否导入 docs 包：`_ "EmployeeManagementDemo/docs"`
+  - 确认 `swag init` 生成路径正确
+
+2. **注释不生效**：
+  - 确保注释紧接在函数声明上方（无空行）
+  - 检查缩进是否使用空格而非 Tab
+
+3. **认证问题**：
+  - 在 Swagger UI 中点击 "Authorize" 按钮
+  - 输入 `Bearer <your_token>`
+
+
+---
+
+# 响应数据的封装
+
+在后端开发中，封装响应数据 `data` 字段的实体类通常根据其用途和设计模式有不同的命名方式，以下是常见的几种名称及使用场景：
+
+---
+
+### **1. DTO (Data Transfer Object)**
+- **作用**：用于不同层（如 Controller 和 Service）之间的数据传输，隔离数据库模型和接口响应。
+- **命名示例**：
+  ```java
+  public class UserDTO {
+      private Long id;
+      private String username;
+      private String email;
+      // getters/setters
+  }
+  ```
+- **适用场景**：
+  - 返回给前端的字段需要与数据库模型不同时（如隐藏敏感字段）。
+  - 需要聚合多个数据库模型的数据。
+
+---
+
+### **2. VO (View Object / Value Object)**
+- **作用**：专门为前端展示设计的对象，可能包含额外的视图逻辑字段。
+- **命名示例**：
+  ```java
+  public class UserVO {
+      private String name;
+      private String avatarUrl;
+      // 视图相关字段（如格式化后的日期）
+      private String createdAtFormatted;
+  }
+  ```
+- **适用场景**：
+  - 前端需要的数据结构与后端模型差异较大时。
+  - 需要将数据适配到特定 UI 展示逻辑。
+
+---
+
+### **3. Response Object**
+- **作用**：直接表示 HTTP 接口的响应体结构，通常包含 `code`, `message`, `data` 等字段。
+- **命名示例**：
+  ```java
+  public class ApiResponse<T> {
+      private int code;
+      private String message;
+      private T data;
+      // getters/setters
+  }
+  ```
+- **使用示例**：
+  ```java
+  ApiResponse<UserDTO> response = new ApiResponse<>(200, "success", userDTO);
+  ```
+
+---
+
+### **4. Entity / Model**
+- **作用**：直接映射数据库表的实体类，但**一般不直接暴露给前端**。
+- **命名示例**：
+  ```java
+  @Entity
+  public class User {
+      @Id
+      private Long id;
+      private String username;
+      private String password; // 敏感字段，不能暴露！
+  }
+  ```
+- **注意事项**：
+  - 通常需要配合 DTO 或 VO 使用，避免直接返回数据库实体。
+
+---
+
+### **5. 其他常见名称**
+| 名称                | 场景                                 |
+|---------------------|--------------------------------------|
+| `Result`            | 通用结果包装（如 `Result.success(data)`） |
+| `Resource`          | RESTful API 资源（如 `UserResource`）    |
+| `Wrapper`           | 数据包装器（如 `DataWrapper<T>`）        |
+
+---
+
+### **如何选择？**
+1. **分层设计**：
+  - **Controller 层**：返回 `DTO` 或 `VO`。
+  - **Service 层**：操作 `Entity` 或 `DTO`。
+  - **数据库层**：使用 `Entity`。
+
+2. **安全性**：
+  - **不要直接返回 `Entity`**，避免泄露敏感字段（如 `password`）。
+
+3. **一致性**：
+  - 项目中统一命名规则（如所有响应体用 `XxxResponse`）。
+
+---
+
+### **示例代码（Java + Spring Boot）**
+```java
+// 1. 定义通用响应体
+public class ApiResponse<T> {
+    private int code;
+    private String message;
+    private T data;
+    // 构造方法、getter/setter
+}
+
+// 2. 定义 DTO
+public class UserDTO {
+    private Long id;
+    private String username;
+    private String email;
+}
+
+// 3. Controller 返回
+@GetMapping("/users/{id}")
+public ApiResponse<UserDTO> getUser(@PathVariable Long id) {
+    UserDTO user = userService.getUserById(id);
+    return new ApiResponse<>(200, "success", user);
+}
+```
+
+---
+
+### **总结**
+- **推荐名称**：优先使用 `DTO` 或 `VO` 表示 `data` 字段的实体类。
+- **避免名称**：不要直接使用 `Entity` 或 `Model` 暴露数据库模型。
+- **核心原则**：根据分层架构的需要隔离数据，保持接口安全性和可维护性。

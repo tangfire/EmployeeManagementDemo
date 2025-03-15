@@ -3,6 +3,8 @@ package controllers
 import (
 	"EmployeeManagementDemo/config"
 	"EmployeeManagementDemo/models"
+	"EmployeeManagementDemo/services"
+	"EmployeeManagementDemo/utils"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
@@ -79,8 +81,25 @@ func UpdateDepartment(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "部门更新成功"})
 }
 
+// DeleteDepartment godoc
+// @Summary 删除部门
+// @Description 根据部门ID删除部门
+// @Tags 部门管理
+// @Accept json
+// @Produce json
+// @Param id path int true "部门ID"
+// @Security BearerAuth
+// @Success 200 {object} map[string]string "成功响应"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 500 {object} map[string]string "内部错误"
+// @Router /departments/{id} [delete]
 func DeleteDepartment(c *gin.Context) {
 	depID := c.Param("dep_id")
+	adminId, err := utils.GetCurrentUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录!"})
+		return
+	}
 
 	// 检查是否有员工关联
 	var empCount int64
@@ -96,5 +115,33 @@ func DeleteDepartment(c *gin.Context) {
 		return
 	}
 
+	// 发送操作日志
+	services.SendLogToRabbitMQ(map[string]interface{}{
+		"user_id":   adminId,
+		"action":    "delete_department",
+		"target_id": depID, // 或更详细的描述
+	})
+
 	c.JSON(http.StatusOK, gin.H{"message": "部门删除成功"})
+}
+
+// controllers/department_controller.go
+func GetDepartmentSalaryAverages(c *gin.Context) {
+	data, err := services.GetDepartmentAvgSalaries()
+	if err != nil {
+		c.JSON(500, models.Error(500, "获取数据失败"))
+		return
+	}
+
+	c.JSON(200, models.Success(data))
+}
+
+// GetDepartmentHeadcounts controllers/department_controller.go
+func GetDepartmentHeadcounts(c *gin.Context) {
+	data, err := services.GetDepartmentHeadcounts()
+	if err != nil {
+		c.JSON(500, models.Error(500, "获取数据失败"))
+		return
+	}
+	c.JSON(200, models.Success(data))
 }

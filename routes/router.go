@@ -56,6 +56,10 @@ func SetupAuthRoutes(r *gin.Engine) {
 	{
 		//adminGroup.GET("/employees", controllers.ListEmployees)
 
+		// routers/router.go
+		adminGroup.GET("/departments/salary-averages", controllers.GetDepartmentSalaryAverages)
+		// routers/router.go
+		adminGroup.GET("/departments/headcounts", controllers.GetDepartmentHeadcounts)
 		adminGroup.POST("/departments", controllers.CreateDepartment)           // 创建部门
 		adminGroup.PUT("/departments/:dep_id", controllers.UpdateDepartment)    // 更新部门
 		adminGroup.DELETE("/departments/:dep_id", controllers.DeleteDepartment) // 删除部门

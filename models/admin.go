@@ -6,18 +6,22 @@ type Admin struct {
 	AdminID       uint   `gorm:"primaryKey;autoIncrement;column:admin_id"` // 主键自增
 	AdminName     string `gorm:"type:varchar(20);not null;unique"`         // 不能为空且唯一
 	AdminPassword string `gorm:"type:varchar(200);not null"`               // 不能为空
-	AdminEmail    string `gorm:"type:varchar(50)"`                         // 邮箱
-	AdminPhone    string `gorm:"type:varchar(11)"`                         // 手机号
+	AdminPhone    string `gorm:"type:char(11);not null"`                   // 固定11位手机号
+	AdminEmail    string `gorm:"type:varchar(50);unique"`                  // 邮箱唯一
 	Avatar        string `gorm:"type:varchar(100)"`                        // 头像路径
 
-	// 可选：添加与 LeaveRequest 的反向关联
-	LeaveRequests []LeaveRequest `gorm:"foreignKey:AdminID"`
 }
 
 // TableName 自定义表名（与数据库表名一致）
+// models/admin.go
 func (Admin) TableName() string {
-	return "admin"
+	return "admins" // 统一使用复数表名
 }
+
+// TableEngine 添加以下方法强制指定引擎
+//func (Admin) TableEngine() string {
+//	return "InnoDB" // 必须使用支持外键的引擎
+//}
 
 func (a *Admin) CheckPassword(password string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(a.AdminPassword), []byte(password))

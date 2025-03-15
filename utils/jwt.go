@@ -14,7 +14,7 @@ type Claims struct {
 	jwt.RegisteredClaims        // 替换 StandardClaims
 }
 
-func GenerateJWT(user models.User) (string, error) {
+func GenerateJWT(user models.BaseUser) (string, error) {
 	claims := Claims{
 		UserID: user.GetID(),
 		Role:   user.GetRole(),

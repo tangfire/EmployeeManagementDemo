@@ -7,7 +7,7 @@ type UserPasswordHolder interface {
 }
 
 // 定义用户接口（统一Admin和Employee的认证行为）
-type User interface {
+type BaseUser interface {
 	GetID() uint
 	GetUsername() string
 	GetRole() string

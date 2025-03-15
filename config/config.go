@@ -54,7 +54,7 @@ func InitMySQL() {
 	dsn := "root:8888.216@tcp(localhost:3306)/employee_db?charset=utf8mb4&parseTime=True&loc=Local"
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		// 禁用自动创建外键约束
-		DisableForeignKeyConstraintWhenMigrating: true,
+		//DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		panic("Failed to connect to MySQL: " + err.Error())
