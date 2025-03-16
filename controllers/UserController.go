@@ -5,6 +5,7 @@ import (
 	"EmployeeManagementDemo/models"
 	"EmployeeManagementDemo/services"
 	"EmployeeManagementDemo/utils"
+	"EmployeeManagementDemo/websocket"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -233,4 +234,21 @@ func Logout(c *gin.Context) {
 	services.SendLogToRabbitMQ(logData)
 
 	c.JSON(200, gin.H{"message": "已成功注销"})
+}
+
+func GetChatUsers(c *gin.Context) {
+	var chatusers []models.ChatUser
+	// 从数据库获取员工数据
+	if err := config.DB.Find(&chatusers).Error; err != nil {
+		c.JSON(500, models.Error(500, "数据库查询失败"))
+		return
+	}
+
+	// 设置在线状态（需要结合WebSocket连接状态）
+	onlineUsers := websocket.GetOnlineUsers()
+	for i := range chatusers {
+		chatusers[i].Online = onlineUsers[chatusers[i].ID]
+	}
+
+	c.JSON(200, models.Success(chatusers))
 }

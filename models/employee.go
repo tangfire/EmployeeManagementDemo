@@ -18,6 +18,7 @@ type Employee struct {
 	Address   string         `gorm:"type:varchar(100)" json:"address"`
 	Salary    float64        `gorm:"type:int(10)" json:"salary"`
 	Status    string         `gorm:"type:varchar(20);default:'在职';index:idx_emp_status" json:"status"`
+	Online    bool           `json:"online" gorm:"-"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 }
 

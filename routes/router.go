@@ -4,6 +4,7 @@ package routes
 import (
 	"EmployeeManagementDemo/controllers"
 	"EmployeeManagementDemo/middleware"
+	"EmployeeManagementDemo/websocket"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,6 +33,9 @@ func SetupAuthRoutes(r *gin.Engine) {
 		userGroup.PUT("/profile", controllers.UpdateProfile)
 
 		userGroup.POST("/logout", controllers.Logout) // 用户注销接口
+
+		userGroup.GET("/chat-users", controllers.GetChatUsers)
+
 	}
 
 	// 需要登录的接口（需要鉴权）
@@ -76,6 +80,12 @@ func SetupAuthRoutes(r *gin.Engine) {
 		// 管理员踢人接口（需要管理员权限）
 		adminGroup.PUT("/users/:user_id/kick", controllers.KickUser)
 
+	}
+
+	chatGroup := r.Group("/api/chat")
+	chatGroup.Use(middleware.JWTAuth())
+	{
+		chatGroup.GET("/ws", websocket.HandleWebSocket)
 	}
 
 }
