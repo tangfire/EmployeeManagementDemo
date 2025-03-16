@@ -368,13 +368,6 @@ func ExportEmployees(c *gin.Context) {
 		}
 	}()
 
-	// 设置事务隔离级别（网页2][3]
-	if err := tx.Exec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ").Error; err != nil {
-		tx.Rollback()
-		c.JSON(500, models.Error(500, "事务配置失败"))
-		return
-	}
-
 	// 事务内查询（网页1][3]
 	var employeesWithDepNameDto []models.EmployeeWithDepNameDTO
 	query := tx.Model(&models.Employee{}).

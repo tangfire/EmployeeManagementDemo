@@ -1219,12 +1219,7 @@ func ExportEmployees(c *gin.Context) {
         }
     }()
 
-    // 设置事务隔离级别（网页2][3]
-    if err := tx.Exec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ").Error; err != nil {
-        tx.Rollback()
-        c.JSON(500, models.Error(500, "事务配置失败"))
-        return
-    }
+   
 
     // 事务内查询（网页1][3]
     var employeesWithDepNameDto []models.EmployeeWithDepNameDTO
@@ -1285,7 +1280,8 @@ func ExportEmployees(c *gin.Context) {
 
 ### 三、关键改造点说明
 1. **事务隔离级别**  
-   设置`REPEATABLE READ`保证多次查询结果一致（MySQL默认级别）
+   - 设置`REPEATABLE READ`保证多次查询结果一致（MySQL默认级别）
+   - GORM默认使用数据库的默认隔离级别（MySQL默认为REPEATABLE READ），无需手动设置
 
 2. **事务生命周期管理**
    ```go
