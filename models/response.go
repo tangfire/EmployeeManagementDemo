@@ -54,3 +54,8 @@ type DepartmentHeadcountDTO struct {
 	Headcount  int     `gorm:"column:headcount" json:"headcount"`
 	Percentage float64 `json:"percentage"` // 新增比例字段
 }
+
+type EmployeeWithDepNameDTO struct {
+	Employee
+	DepName string `json:"dep_name"` // 仅用于接收联表查询结果
+}

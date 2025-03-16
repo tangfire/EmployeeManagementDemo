@@ -39,11 +39,12 @@ func CreateDepartment(c *gin.Context) {
 func GetDepartments(c *gin.Context) {
 	var departments []models.Department
 	if err := config.DB.Find(&departments).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取部门列表失败"})
+		c.JSON(http.StatusInternalServerError, models.Error(500, "获取部门列表失败"))
 		return
 	}
 
-	c.JSON(http.StatusOK, departments)
+	//c.JSON(http.StatusOK, departments)
+	c.JSON(http.StatusOK, models.Success(departments))
 }
 
 func UpdateDepartment(c *gin.Context) {

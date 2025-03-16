@@ -120,7 +120,13 @@ func GetEmployees(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	offset := (page - 1) * pageSize
 
-	query := config.DB.Model(&models.Employee{}).Where("deleted_at IS NULL")
+	//query := config.DB.Model(&models.Employee{}).Where("deleted_at IS NULL")
+	// 修改后
+	query := config.DB.
+		Model(&models.Employee{}).
+		Select("employees.*, departments.depart as dep_name").
+		Joins("LEFT JOIN departments ON employees.dep_id = departments.dep_id").
+		Where("employees.deleted_at IS NULL")
 
 	// 部门筛选（支持多选）
 	if depIDs := c.QueryArray("dep_id"); len(depIDs) > 0 {
@@ -128,12 +134,14 @@ func GetEmployees(c *gin.Context) {
 	}
 
 	// 性别筛选（支持多选）
-	if genders := c.QueryArray("gender"); len(genders) > 0 {
+	// 兼容两种参数格式（gender[]=男）
+
+	if genders := c.QueryArray("gender[]"); len(genders) > 0 {
 		query = query.Where("gender IN (?)", genders)
 	}
 
 	// 状态筛选（支持多选）
-	if statuses := c.QueryArray("status"); len(statuses) > 0 {
+	if statuses := c.QueryArray("status[]"); len(statuses) > 0 {
 		query = query.Where("status IN (?)", statuses)
 	}
 
@@ -160,14 +168,14 @@ func GetEmployees(c *gin.Context) {
 	var total int64
 	query.Count(&total)
 
-	var employees []models.Employee
-	if err := query.Offset(offset).Limit(pageSize).Find(&employees).Error; err != nil {
+	var employeesWithDepNameDto []models.EmployeeWithDepNameDTO
+	if err := query.Offset(offset).Limit(pageSize).Find(&employeesWithDepNameDto).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.Error(500, "查询失败"))
 		return
 	}
 
 	c.JSON(http.StatusOK, models.Success(gin.H{
-		"data":  employees,
+		"data":  employeesWithDepNameDto,
 		"total": total,
 	}))
 }
