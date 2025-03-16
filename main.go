@@ -70,7 +70,7 @@ func main() {
 	// ---------- 新增：配置 CORS ----------
 	router.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
-			"http://localhost:5181",       // 前端开发环境地址
+			"http://localhost:5182",       // 前端开发环境地址
 			"https://your-production.com", // 生产环境地址（按需修改）
 		},
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},

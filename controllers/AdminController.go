@@ -117,27 +117,59 @@ func CreateEmployee(c *gin.Context) {
 func GetEmployees(c *gin.Context) {
 	// 分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	offset := (page - 1) * pageSize
 
-	// 过滤条件（示例：按部门过滤）
-	departmentID := c.Query("department_id")
-	query := config.DB.Model(&models.Employee{})
+	query := config.DB.Model(&models.Employee{}).Where("deleted_at IS NULL")
 
-	if departmentID != "" {
-		query = query.Where("department_id = ?", departmentID)
+	// 部门筛选（支持多选）
+	if depIDs := c.QueryArray("dep_id"); len(depIDs) > 0 {
+		query = query.Where("dep_id IN (?)", depIDs)
 	}
 
-	// 查询数据
-	var employees []models.Employee
+	// 性别筛选（支持多选）
+	if genders := c.QueryArray("gender"); len(genders) > 0 {
+		query = query.Where("gender IN (?)", genders)
+	}
+
+	// 状态筛选（支持多选）
+	if statuses := c.QueryArray("status"); len(statuses) > 0 {
+		query = query.Where("status IN (?)", statuses)
+	}
+
+	// 全局搜索
+	if search := c.Query("search"); search != "" {
+		query = query.Where(
+			"username LIKE ? OR position LIKE ? OR phone LIKE ?",
+			"%"+search+"%", "%"+search+"%", "%"+search+"%",
+		)
+	}
+
+	// 排序处理
+	if sortField := c.Query("sortField"); sortField != "" {
+		order := sortField
+		if sortOrder := c.Query("sortOrder"); sortOrder == "descend" {
+			order += " DESC"
+		} else {
+			order += " ASC"
+		}
+		query = query.Order(order)
+	}
+
+	// 分页查询
 	var total int64
 	query.Count(&total)
-	query.Offset(offset).Limit(pageSize).Find(&employees)
 
-	c.JSON(http.StatusOK, gin.H{
+	var employees []models.Employee
+	if err := query.Offset(offset).Limit(pageSize).Find(&employees).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.Error(500, "查询失败"))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.Success(gin.H{
 		"data":  employees,
 		"total": total,
-	})
+	}))
 }
 
 func UpdateEmployee(c *gin.Context) {
