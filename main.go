@@ -37,6 +37,10 @@ import (
 // @host localhost:8080
 // @BasePath /api/v1
 func main() {
+
+	// 新增配置加载（必须放在最前面）
+	config.LoadConfig()
+
 	// 初始化 MySQL 并自动迁移表结构
 	setupDatabase()
 

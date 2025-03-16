@@ -1,0 +1,20 @@
+app:
+  env: dev # 开发环境
+  port: 8080
+
+
+
+database:
+  mysql:
+    dsn: "root:8888.216@tcp(localhost:3306)/employee_db?charset=utf8mb4&parseTime=True&loc=Local"
+  redis:
+    addr: "localhost:6379"
+    password: "8888.216"
+    db: 8
+
+rabbitmq:
+  url: "amqp://admin:8888.216@localhost:5674/my_vhost"
+  queue: "operation_logs"
+
+logging:
+  level: info

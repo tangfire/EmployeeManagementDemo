@@ -5,10 +5,73 @@ import (
 	"database/sql"
 	"github.com/go-redis/redis/v8"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"log"
 )
+
+type Config struct {
+	App      AppConfig      `mapstructure:"app"`
+	Database DatabaseConfig `mapstructure:"database"`
+	RabbitMQ RabbitMQConfig `mapstructure:"rabbitmq"`
+	Logging  LoggingConfig  `mapstructure:"logging"`
+}
+
+type AppConfig struct {
+	Env  string `mapstructure:"env"`
+	Port int    `mapstructure:"port"`
+}
+
+type MySQLConfig struct {
+	DSN string `mapstructure:"dsn"`
+}
+
+type RedisConfig struct {
+	Addr     string `mapstructure:"addr"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+}
+
+type DatabaseConfig struct {
+	MySQL MySQLConfig `mapstructure:"mysql"`
+	Redis RedisConfig `mapstructure:"redis"`
+}
+
+type RabbitMQConfig struct {
+	URL   string `mapstructure:"url"`
+	Queue string `mapstructure:"queue"`
+}
+
+type LoggingConfig struct {
+	Level string `mapstructure:"level"`
+}
+
+var Cfg Config
+
+func LoadConfig() {
+	v := viper.New()
+
+	// 基础配置
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+	v.AddConfigPath("./config")
+	v.AddConfigPath(".") // 兼容不同执行路径
+
+	// 环境变量支持（优先级高于配置文件）
+	v.AutomaticEnv()
+	v.SetEnvPrefix("APP") // 环境变量前缀 APP_DATABASE_MYSQL_DSN
+
+	// 读取配置
+	if err := v.ReadInConfig(); err != nil {
+		log.Fatalf("读取配置文件失败: %v", err)
+	}
+
+	// 反序列化到结构体
+	if err := v.Unmarshal(&Cfg); err != nil {
+		log.Fatalf("配置解析失败: %v", err)
+	}
+}
 
 var (
 	DB              *gorm.DB
@@ -22,10 +85,15 @@ var (
 func InitRabbitMQ() {
 	var err error
 
-	// 1. 连接到 RabbitMQ 服务器
-	RabbitMQConn, err = amqp.Dial("amqp://admin:8888.216@localhost:5674/my_vhost")
+	//1. 连接到 RabbitMQ 服务器
+	//RabbitMQConn, err = amqp.Dial("amqp://admin:8888.216@localhost:5674/my_vhost")
+	//if err != nil {
+	//	log.Fatal("RabbitMQ 连接失败:", err)
+	//}
+
+	RabbitMQConn, err = amqp.Dial(Cfg.RabbitMQ.URL)
 	if err != nil {
-		log.Fatal("RabbitMQ 连接失败:", err)
+		log.Fatal("RabbitMQ连接失败:", err)
 	}
 
 	// 2. 创建通道
@@ -51,7 +119,8 @@ func InitRabbitMQ() {
 }
 
 func InitMySQL() {
-	dsn := "root:8888.216@tcp(localhost:3306)/employee_db?charset=utf8mb4&parseTime=True&loc=Local"
+	//dsn := "root:8888.216@tcp(localhost:3306)/employee_db?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := Cfg.Database.MySQL.DSN
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		// 禁用自动创建外键约束
 		//DisableForeignKeyConstraintWhenMigrating: true,
@@ -84,10 +153,15 @@ func PingMySQL() error {
 }
 
 func InitRedis() {
+	//Rdb = redis.NewClient(&redis.Options{
+	//	Addr:     "localhost:6379",
+	//	Password: "8888.216",
+	//	DB:       8,
+	//})
 	Rdb = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "8888.216",
-		DB:       8,
+		Addr:     Cfg.Database.Redis.Addr,
+		Password: Cfg.Database.Redis.Password,
+		DB:       Cfg.Database.Redis.DB,
 	})
 }
 
