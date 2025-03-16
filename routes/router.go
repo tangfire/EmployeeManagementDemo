@@ -66,7 +66,8 @@ func SetupAuthRoutes(r *gin.Engine) {
 		adminGroup.POST("/employees", controllers.CreateEmployee)               // POST   /api/employees
 		adminGroup.PUT("/employees/:emp_id", controllers.UpdateEmployee)        // PUT    /api/employees/:emp_id
 		adminGroup.DELETE("/employees/:emp_id", controllers.DeleteEmployee)     // DELETE /api/employees/:emp_id
-
+		adminGroup.GET("/employees/export", controllers.ExportEmployees)
+		adminGroup.POST("/employees/import", controllers.ImportEmployees)
 		adminGroup.GET("/employees", controllers.GetEmployees) // GET    /api/employees
 
 		adminGroup.PUT("/leave/:id/approve", controllers.ApproveLeaveRequest) // 审批

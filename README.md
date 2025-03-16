@@ -987,3 +987,355 @@ go run main.go
 
 通过上述改造，你的代码将符合 Go 项目的配置管理最佳实践。建议在 `main.go` 的初始化阶段最先调用 `config.LoadConfig()` 确保配置正确加载。
 
+
+
+# Excel导入(事务)
+
+以下是整合自动事务模式的完整代码改造方案，基于GORM的`Transaction`方法实现原子性操作，确保所有数据全部成功或全部回滚：
+
+```go
+// ImportEmployees 导入接口(自动事务模式)
+func ImportEmployees(c *gin.Context) {
+    // 文件处理部分保持不变
+    file, err := c.FormFile("file")
+    if err != nil {
+        c.JSON(400, models.Error(400, "文件上传失败"))
+        return
+    }
+
+    // 校验文件格式
+    if !strings.HasSuffix(file.Filename, ".xlsx") {
+        c.JSON(400, models.Error(400, "仅支持.xlsx格式"))
+        return
+    }
+
+    // 创建上传目录
+    if err := os.MkdirAll("./uploads", os.ModePerm); err != nil {
+        c.JSON(500, models.Error(500, "服务器存储目录创建失败"))
+        return
+    }
+
+    // 保存文件
+    dstPath := filepath.Join("./uploads", file.Filename)
+    if err := c.SaveUploadedFile(file, dstPath); err != nil {
+        c.JSON(400, models.Error(400, "文件保存失败: "+err.Error()))
+        return
+    }
+
+    // 核心事务逻辑
+    err = config.DB.Transaction(func(tx *gorm.DB) error {
+        f, err := excelize.OpenFile(dstPath)
+        if err != nil {
+            return fmt.Errorf("文件格式错误: %v", err)
+        }
+
+        rows, _ := f.GetRows("员工信息")
+        for i, row := range rows {
+            if i == 0 {
+                continue // 跳过表头
+            }
+
+            // 工号转换
+            empID, err := strconv.ParseUint(row[0], 10, 64)
+            if err != nil {
+                return fmt.Errorf("第%d行工号格式错误", i+1)
+            }
+
+            // 薪资转换
+            salaryValue, err := strconv.ParseFloat(row[5], 64)
+            if err != nil {
+                return fmt.Errorf("第%d行薪资格式错误", i+1)
+            }
+
+            // 部门查询（使用事务对象）
+            depID, err := getDepIDByNameWithTx(tx, row[2])
+            if err != nil {
+                return fmt.Errorf("第%d行部门不存在", i+1)
+            }
+
+            emp := models.Employee{
+                EmpID:    uint(empID),
+                Username: row[1],
+                DepID:    depID,
+                Position: row[3],
+                Gender:   row[4],
+                Salary:   salaryValue,
+                Status:   row[6],
+            }
+
+            // 数据校验（使用事务对象）
+            if err := validateEmployeeWithTx(tx, emp); err != nil {
+                return fmt.Errorf("第%d行数据错误: %v", i+1, err)
+            }
+
+            // 数据库写入（使用事务对象）
+            if err := tx.Create(&emp).Error; err != nil {
+                return fmt.Errorf("第%d行保存失败: %v", i+1, err)
+            }
+        }
+        return nil // 全部成功自动提交
+    })
+
+    // 统一错误处理
+    if err != nil {
+        c.JSON(400, models.Error(400, err.Error()))
+        return
+    }
+
+    c.JSON(200, models.Success(nil))
+}
+
+// 改造后的部门查询函数(支持事务)
+func getDepIDByNameWithTx(tx *gorm.DB, name string) (uint, error) {
+    var dep models.Department
+    if err := tx.Where("depart = ?", name).First(&dep).Error; err != nil {
+        return 0, err
+    }
+    return dep.DepID, nil
+}
+
+// 改造后的数据校验函数(支持事务)
+func validateEmployeeWithTx(tx *gorm.DB, emp models.Employee) error {
+    // 基础校验
+    if emp.EmpID == 0 {
+        return fmt.Errorf("工号不能为空")
+    }
+    if emp.Username == "" {
+        return fmt.Errorf("姓名不能为空")
+    }
+
+    // 部门存在性校验（使用事务对象）
+    var dep models.Department
+    if err := tx.Where("dep_id = ?", emp.DepID).First(&dep).Error; err != nil {
+        return fmt.Errorf("部门ID不存在")
+    }
+
+    // 枚举值校验
+    validGenders := map[string]bool{"男": true, "女": true, "其他": true}
+    if !validGenders[emp.Gender] {
+        return fmt.Errorf("性别值无效")
+    }
+
+    // 唯一性校验（使用事务对象）
+    var existing models.Employee
+    if err := tx.Where("emp_id = ? OR username = ?", emp.EmpID, emp.Username).
+        First(&existing).Error; err == nil {
+        return fmt.Errorf("工号或用户名已存在")
+    }
+
+    return nil
+}
+```
+
+**关键改造点说明**：
+
+1. **自动事务管理**
+- 使用`Transaction`方法包裹整个导入逻辑
+- 匿名函数返回nil时自动提交，返回error时自动回滚
+- 事务内所有操作使用同一个`tx`对象
+
+2. **统一事务上下文**
+- 部门查询`getDepIDByNameWithTx`和数据校验`validateEmployeeWithTx`都改用事务对象
+- 数据库操作隔离性：通过事务对象保证所有查询在同一个事务视图内
+
+3. **错误处理优化**
+- 将原本的`c.JSON`错误返回改为`return error`
+- 事务内错误自动触发回滚，避免脏数据残留
+
+4. **原子性保障**
+- 文件解析和数据转换在事务外完成
+- 所有数据库操作（包括校验）都在事务内执行
+- 任一环节出错都会导致全量回滚
+
+**扩展优化建议**：
+
+1. **批量插入优化**
+```go
+// 在事务闭包内收集有效数据
+var validEmps []models.Employee
+for ... {
+    validEmps = append(validEmps, emp)
+}
+
+// 批量插入（分页处理）
+batchSize := 100
+return tx.CreateInBatches(validEmps, batchSize).Error
+```
+
+2. **行级锁控制**
+```go
+// 在部门查询时添加行级锁
+tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+   Where("depart = ?", name).
+   First(&dep)
+```
+
+3. **事务隔离级别设置**
+```go
+err = config.DB.Transaction(func(tx *gorm.DB) error {
+    tx.Exec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+    // ...业务逻辑...
+})
+```
+
+**测试验证方法**：
+1. 准备包含错误数据的测试文件（如第5行部门不存在）
+2. 执行导入后检查：
+  - 数据库应无任何新记录
+  - 返回错误信息应包含具体行号
+3. 使用`SHOW ENGINE INNODB STATUS`查看事务状态
+
+该方案实现了全量原子性保障，任一错误都会导致全部回滚。所有数据库操作（包括校验查询）都在事务内完成，确保数据一致性。
+
+
+# Excel导出(事务)
+
+
+基于GORM的事务特性和数据一致性要求，以下是优化后的导出代码实现方案：
+
+---
+
+### 一、事务必要性分析
+虽然导出操作本质是读操作，但在以下场景需要事务保障：
+1. **数据一致性**：需要确保导出的全部数据来自同一时间点的快照
+2. **并发控制**：避免导出过程中数据被修改导致的脏读/幻读
+3. **错误处理**：统一管理数据库连接生命周期
+
+---
+
+### 二、完整事务化改造代码
+```go
+// ExportEmployees 导出接口(事务版)
+func ExportEmployees(c *gin.Context) {
+    // 开启事务（隔离级别设为REPEATABLE READ）
+    tx := config.DB.Begin()
+    if tx.Error != nil {
+        c.JSON(500, models.Error(500, "事务启动失败"))
+        return
+    }
+    defer func() {
+        if r := recover(); r != nil {
+            tx.Rollback()
+        }
+    }()
+
+    // 设置事务隔离级别（网页2][3]
+    if err := tx.Exec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ").Error; err != nil {
+        tx.Rollback()
+        c.JSON(500, models.Error(500, "事务配置失败"))
+        return
+    }
+
+    // 事务内查询（网页1][3]
+    var employeesWithDepNameDto []models.EmployeeWithDepNameDTO
+    query := tx.Model(&models.Employee{}).
+        Select("employees.*, departments.depart as dep_name").
+        Joins("LEFT JOIN departments ON employees.dep_id = departments.dep_id").
+        Where("employees.deleted_at IS NULL")
+        
+    if err := query.Find(&employeesWithDepNameDto).Error; err != nil {
+        tx.Rollback()
+        c.JSON(500, models.Error(500, "数据查询失败"))
+        return
+    }
+
+    // 创建Excel文件
+    f := excelize.NewFile()
+    sheet := "员工信息"
+    index, _ := f.NewSheet(sheet)
+    f.SetActiveSheet(index)
+
+    // 设置表头
+    headers := []string{"工号", "姓名", "部门", "职位", "性别", "薪资", "状态"}
+    for col, h := range headers {
+        cell, _ := excelize.CoordinatesToCellName(col+1, 1)
+        f.SetCellValue(sheet, cell, h)
+    }
+
+    // 填充数据
+    for row, emp := range employeesWithDepNameDto {
+        rowIndex := row + 2
+        f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), emp.EmpID)
+        f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), emp.Username)
+        f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIndex), emp.DepName)
+        f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), emp.Position)
+        f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), emp.Gender)
+        f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), emp.Salary)
+        f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), emp.Status)
+    }
+
+    // 提交事务（网页2][3]
+    if err := tx.Commit().Error; err != nil {
+        c.JSON(500, models.Error(500, "事务提交失败"))
+        return
+    }
+
+    // 设置响应头
+    c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    c.Header("Content-Disposition", "attachment; filename=employees.xlsx")
+
+    // 输出文件流
+    if _, err := f.WriteTo(c.Writer); err != nil {
+        c.JSON(500, models.Error(500, "文件流输出失败"))
+    }
+}
+```
+
+---
+
+### 三、关键改造点说明
+1. **事务隔离级别**  
+   设置`REPEATABLE READ`保证多次查询结果一致（MySQL默认级别）
+
+2. **事务生命周期管理**
+   ```go
+   tx := config.DB.Begin()  // 手动开启事务
+   defer Rollback()         // 异常时自动回滚
+   tx.Commit()              // 显式提交
+   ```
+
+3. **连接复用优化**  
+   整个导出流程复用同一个数据库连接，避免连接池竞争
+
+---
+
+### 四、性能优化建议
+1. **分页查询**（应对大数据量）
+   ```go
+   pageSize := 500
+   for page := 1; ; page++ {
+       var batch []models.EmployeeWithDepNameDTO
+       query.Offset((page-1)*pageSize).Limit(pageSize).Find(&batch)
+       if len(batch) == 0 { break }
+       // 处理当前批次数据...
+   }
+   ```
+
+2. **流式导出**  
+   使用`Streaming API`替代完整加载到内存：
+   ```go
+   rows, _ := tx.Model(...).Rows()
+   defer rows.Close()
+   for rows.Next() {
+       // 逐行处理...
+   }
+   ```
+
+---
+
+### 五、事务模式选择建议
+| 场景 | 推荐方案 | 优点 |
+|------|----------|------|
+| 简单查询 | 自动事务（Transaction方法） | 代码简洁 |
+| 复杂流程 | 手动事务（Begin/Commit） | 精细控制 |
+| 只读操作 | 显式设置只读模式 | 提升性能 |
+
+```go
+// 设置只读事务（网页3]
+tx.Exec("SET TRANSACTION READ ONLY")
+```
+
+---
+
+该方案通过事务保障了导出数据的完整一致性，特别适用于需要生成精确报表的场景。对于实时性要求不高的场景，可移除事务以提升性能。
+

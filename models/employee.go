@@ -16,7 +16,7 @@ type Employee struct {
 	Phone     string         `gorm:"type:char(11);not null" json:"phone"`
 	Avatar    string         `gorm:"type:varchar(100)" json:"avatar"`
 	Address   string         `gorm:"type:varchar(100)" json:"address"`
-	Salary    int            `gorm:"type:int(10)" json:"salary"`
+	Salary    float64        `gorm:"type:int(10)" json:"salary"`
 	Status    string         `gorm:"type:varchar(20);default:'在职';index:idx_emp_status" json:"status"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 }

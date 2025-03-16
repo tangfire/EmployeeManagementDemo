@@ -5,9 +5,15 @@ import (
 	"EmployeeManagementDemo/models"
 	"EmployeeManagementDemo/services"
 	"EmployeeManagementDemo/utils"
+	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/xuri/excelize/v2"
+	"gorm.io/gorm"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -347,3 +353,387 @@ func KickUser(c *gin.Context) {
 
 	c.JSON(200, gin.H{"message": "用户已被踢出"})
 }
+
+// ExportEmployees 导出接口(事务版)
+func ExportEmployees(c *gin.Context) {
+	// 开启事务（隔离级别设为REPEATABLE READ）
+	tx := config.DB.Begin()
+	if tx.Error != nil {
+		c.JSON(500, models.Error(500, "事务启动失败"))
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// 设置事务隔离级别（网页2][3]
+	if err := tx.Exec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ").Error; err != nil {
+		tx.Rollback()
+		c.JSON(500, models.Error(500, "事务配置失败"))
+		return
+	}
+
+	// 事务内查询（网页1][3]
+	var employeesWithDepNameDto []models.EmployeeWithDepNameDTO
+	query := tx.Model(&models.Employee{}).
+		Select("employees.*, departments.depart as dep_name").
+		Joins("LEFT JOIN departments ON employees.dep_id = departments.dep_id").
+		Where("employees.deleted_at IS NULL")
+
+	if err := query.Find(&employeesWithDepNameDto).Error; err != nil {
+		tx.Rollback()
+		c.JSON(500, models.Error(500, "数据查询失败"))
+		return
+	}
+
+	// 创建Excel文件
+	f := excelize.NewFile()
+	sheet := "员工信息"
+	index, _ := f.NewSheet(sheet)
+	f.SetActiveSheet(index)
+
+	// 设置表头
+	headers := []string{"工号", "姓名", "部门", "职位", "性别", "薪资", "状态"}
+	for col, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(col+1, 1)
+		f.SetCellValue(sheet, cell, h)
+	}
+
+	// 填充数据
+	for row, emp := range employeesWithDepNameDto {
+		rowIndex := row + 2
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), emp.EmpID)
+		f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), emp.Username)
+		f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIndex), emp.DepName)
+		f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), emp.Position)
+		f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), emp.Gender)
+		f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), emp.Salary)
+		f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), emp.Status)
+	}
+
+	// 提交事务（网页2][3]
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(500, models.Error(500, "事务提交失败"))
+		return
+	}
+
+	// 设置响应头
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", "attachment; filename=employees.xlsx")
+
+	// 输出文件流
+	if _, err := f.WriteTo(c.Writer); err != nil {
+		c.JSON(500, models.Error(500, "文件流输出失败"))
+	}
+}
+
+// ExportEmployees 导出接口(无事务)
+//func ExportEmployees(c *gin.Context) {
+//	// 获取所有数据
+//	var employeesWithDepNameDto []models.EmployeeWithDepNameDTO
+//	//if err := config.DB.Find(&employees).Error; err != nil {
+//	//	c.JSON(500, models.Error(500, "数据查询失败"))
+//	//	return
+//	//}
+//	query := config.DB.
+//		Model(&models.Employee{}).
+//		Select("employees.*, departments.depart as dep_name").
+//		Joins("LEFT JOIN departments ON employees.dep_id = departments.dep_id").
+//		Where("employees.deleted_at IS NULL")
+//
+//	if err := query.Find(&employeesWithDepNameDto).Error; err != nil {
+//		c.JSON(http.StatusInternalServerError, models.Error(500, "查询失败"))
+//		return
+//	}
+//
+//	// 创建Excel文件
+//	f := excelize.NewFile()
+//	sheet := "员工信息"
+//	index, _ := f.NewSheet(sheet)
+//	f.SetActiveSheet(index) // 添加此行
+//
+//	// 设置表头
+//	headers := []string{"工号", "姓名", "部门", "职位", "性别", "薪资", "状态"}
+//	for col, h := range headers {
+//		cell, _ := excelize.CoordinatesToCellName(col+1, 1)
+//		f.SetCellValue(sheet, cell, h)
+//	}
+//
+//	// 填充数据
+//	for row, emp := range employeesWithDepNameDto {
+//		rowIndex := row + 2
+//		f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), emp.EmpID)
+//		f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), emp.Username)
+//		f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIndex), emp.DepName)
+//		f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), emp.Position)
+//		f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), emp.Gender)
+//		f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), emp.Salary)
+//		f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), emp.Status)
+//	}
+//
+//	// 设置响应头
+//	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+//	c.Header("Content-Disposition", "attachment; filename=employees.xlsx")
+//
+//	// 输出文件流
+//	if _, err := f.WriteTo(c.Writer); err != nil {
+//		c.JSON(500, models.Error(500, "文件生成失败"))
+//	}
+//}
+
+// ImportEmployees 导入接口(自动事务模式)
+func ImportEmployees(c *gin.Context) {
+	// 文件处理部分保持不变
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(400, models.Error(400, "文件上传失败"))
+		return
+	}
+
+	// 校验文件格式
+	if !strings.HasSuffix(file.Filename, ".xlsx") {
+		c.JSON(400, models.Error(400, "仅支持.xlsx格式"))
+		return
+	}
+
+	// 创建上传目录
+	if err := os.MkdirAll("./uploads", os.ModePerm); err != nil {
+		c.JSON(500, models.Error(500, "服务器存储目录创建失败"))
+		return
+	}
+
+	// 保存文件
+	dstPath := filepath.Join("./uploads", file.Filename)
+	if err := c.SaveUploadedFile(file, dstPath); err != nil {
+		c.JSON(400, models.Error(400, "文件保存失败: "+err.Error()))
+		return
+	}
+
+	// 核心事务逻辑
+	err = config.DB.Transaction(func(tx *gorm.DB) error {
+		f, err := excelize.OpenFile(dstPath)
+		if err != nil {
+			return fmt.Errorf("文件格式错误: %v", err)
+		}
+
+		rows, _ := f.GetRows("员工信息")
+		for i, row := range rows {
+			if i == 0 {
+				continue // 跳过表头
+			}
+
+			// 工号转换
+			empID, err := strconv.ParseUint(row[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("第%d行工号格式错误", i+1)
+			}
+
+			// 薪资转换
+			salaryValue, err := strconv.ParseFloat(row[5], 64)
+			if err != nil {
+				return fmt.Errorf("第%d行薪资格式错误", i+1)
+			}
+
+			// 部门查询（使用事务对象）
+			depID, err := getDepIDByNameWithTx(tx, row[2])
+			if err != nil {
+				return fmt.Errorf("第%d行部门不存在", i+1)
+			}
+
+			emp := models.Employee{
+				EmpID:    uint(empID),
+				Username: row[1],
+				DepID:    depID,
+				Position: row[3],
+				Gender:   row[4],
+				Salary:   salaryValue,
+				Status:   row[6],
+			}
+
+			// 数据校验（使用事务对象）
+			if err := validateEmployeeWithTx(tx, emp); err != nil {
+				return fmt.Errorf("第%d行数据错误: %v", i+1, err)
+			}
+
+			// 数据库写入（使用事务对象）
+			if err := tx.Create(&emp).Error; err != nil {
+				return fmt.Errorf("第%d行保存失败: %v", i+1, err)
+			}
+		}
+		return nil // 全部成功自动提交
+	})
+
+	// 统一错误处理
+	if err != nil {
+		c.JSON(400, models.Error(400, err.Error()))
+		return
+	}
+
+	c.JSON(200, models.Success(nil))
+}
+
+// 改造后的部门查询函数(支持事务)
+func getDepIDByNameWithTx(tx *gorm.DB, name string) (uint, error) {
+	var dep models.Department
+	if err := tx.Where("depart = ?", name).First(&dep).Error; err != nil {
+		return 0, err
+	}
+	return dep.DepID, nil
+}
+
+// 改造后的数据校验函数(支持事务)
+func validateEmployeeWithTx(tx *gorm.DB, emp models.Employee) error {
+	// 基础校验
+	if emp.EmpID == 0 {
+		return fmt.Errorf("工号不能为空")
+	}
+	if emp.Username == "" {
+		return fmt.Errorf("姓名不能为空")
+	}
+
+	// 部门存在性校验（使用事务对象）
+	var dep models.Department
+	if err := tx.Where("dep_id = ?", emp.DepID).First(&dep).Error; err != nil {
+		return fmt.Errorf("部门ID不存在")
+	}
+
+	// 枚举值校验
+	validGenders := map[string]bool{"男": true, "女": true, "其他": true}
+	if !validGenders[emp.Gender] {
+		return fmt.Errorf("性别值无效")
+	}
+
+	// 唯一性校验（使用事务对象）
+	var existing models.Employee
+	if err := tx.Where("emp_id = ? OR username = ?", emp.EmpID, emp.Username).
+		First(&existing).Error; err == nil {
+		return fmt.Errorf("工号或用户名已存在")
+	}
+
+	return nil
+}
+
+//// ImportEmployees 导入接口(无事务)
+//func ImportEmployees(c *gin.Context) {
+//	file, err := c.FormFile("file")
+//	if err != nil {
+//		c.JSON(400, models.Error(400, "文件上传失败"))
+//		return
+//	}
+//
+//	// 校验文件格式
+//	if !strings.HasSuffix(file.Filename, ".xlsx") {
+//		c.JSON(400, models.Error(400, "仅支持.xlsx格式"))
+//		return
+//	}
+//
+//	// 创建上传目录
+//	if err := os.MkdirAll("./uploads", os.ModePerm); err != nil {
+//		c.JSON(500, models.Error(500, "服务器存储目录创建失败"))
+//		return
+//	}
+//
+//	// 保存文件
+//	dstPath := filepath.Join("./uploads", file.Filename) // 使用跨平台路径拼接
+//	if err := c.SaveUploadedFile(file, dstPath); err != nil {
+//		c.JSON(400, models.Error(400, "文件保存失败: "+err.Error()))
+//		return
+//	}
+//
+//	// 打开Excel文件（使用保存后的路径）
+//	f, err := excelize.OpenFile(dstPath)
+//	if err != nil {
+//		c.JSON(400, models.Error(400, "文件格式错误: "+err.Error()))
+//		return
+//	}
+//
+//	// 解析数据
+//	rows, _ := f.GetRows("员工信息")
+//	for i, row := range rows {
+//		if i == 0 {
+//			continue
+//		}
+//
+//		// 工号转换
+//		empID, err := strconv.ParseUint(row[0], 10, 64)
+//		if err != nil {
+//			c.JSON(400, models.Error(400, fmt.Sprintf("第%d行工号格式错误", i+1)))
+//			return
+//		}
+//
+//		// 薪资转换
+//		salaryValue, err := strconv.ParseFloat(row[5], 64)
+//		if err != nil {
+//			c.JSON(400, models.Error(400, fmt.Sprintf("第%d行薪资格式错误", i+1)))
+//			return
+//		}
+//
+//		// 部门ID转换
+//		depID, err := getDepIDByName(row[2])
+//		if err != nil {
+//			c.JSON(400, models.Error(400, fmt.Sprintf("第%d行部门不存在", i+1)))
+//			return
+//		}
+//
+//		emp := models.Employee{
+//			EmpID:    uint(empID),
+//			Username: row[1],
+//			DepID:    depID,
+//			Position: row[3],
+//			Gender:   row[4],
+//			Salary:   salaryValue,
+//			Status:   row[6],
+//		}
+//
+//		// 数据校验
+//		if err := validateEmployee(emp); err != nil {
+//			c.JSON(400, models.Error(400, fmt.Sprintf("第%d行数据错误: %v", i+1, err)))
+//			return
+//		}
+//
+//		// 保存到数据库
+//		if err := config.DB.Create(&emp).Error; err != nil {
+//			c.JSON(500, models.Error(500, "数据保存失败"))
+//			return
+//		}
+//	}
+//
+//	c.JSON(200, models.Success(nil))
+//}
+//
+//// 优化后的部门查询函数(无事务)
+//func getDepIDByName(name string) (uint, error) {
+//	var dep models.Department
+//	result := config.DB.Where("depart = ?", name).First(&dep)
+//	if result.Error != nil {
+//		return 0, result.Error
+//	}
+//	return dep.DepID, nil
+//}
+//
+//// models/employee.go(无事务)
+//func validateEmployee(emp models.Employee) error {
+//	// 基础校验
+//	if emp.EmpID == 0 {
+//		return fmt.Errorf("工号不能为空")
+//	}
+//	if emp.Username == "" {
+//		return fmt.Errorf("姓名不能为空")
+//	}
+//
+//	// 部门存在性校验
+//	var dep models.Department
+//	if err := config.DB.Where("dep_id = ?", emp.DepID).First(&dep).Error; err != nil {
+//		return fmt.Errorf("部门ID不存在")
+//	}
+//
+//	// 枚举值校验
+//	validGenders := map[string]bool{"男": true, "女": true, "其他": true}
+//	if !validGenders[emp.Gender] {
+//		return fmt.Errorf("性别值无效")
+//	}
+//
+//	return nil
+//}
