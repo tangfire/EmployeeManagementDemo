@@ -21,6 +21,8 @@ func SetupAuthRoutes(r *gin.Engine) {
 		publicGroup.POST("/login", controllers.Login)
 		publicGroup.POST("/register", controllers.Register)            // 员工自助注册
 		publicGroup.POST("/admin/register", controllers.AdminRegister) // 管理员注册（需要密钥，但不需要登录）
+
+		publicGroup.GET("/ws", websocket.WsHandle) // 新增WebSocket路由
 	}
 
 	userGroup := r.Group("/api")
@@ -33,8 +35,6 @@ func SetupAuthRoutes(r *gin.Engine) {
 		userGroup.PUT("/profile", controllers.UpdateProfile)
 
 		userGroup.POST("/logout", controllers.Logout) // 用户注销接口
-
-		userGroup.GET("/chat-users", controllers.GetChatUsers)
 
 	}
 
@@ -80,12 +80,6 @@ func SetupAuthRoutes(r *gin.Engine) {
 		// 管理员踢人接口（需要管理员权限）
 		adminGroup.PUT("/users/:user_id/kick", controllers.KickUser)
 
-	}
-
-	chatGroup := r.Group("/api/chat")
-	chatGroup.Use(middleware.JWTAuth())
-	{
-		chatGroup.GET("/ws", websocket.HandleWebSocket)
 	}
 
 }

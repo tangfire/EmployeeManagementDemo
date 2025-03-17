@@ -12,6 +12,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"go.uber.org/zap"
 	"log"
 	"os"
 	"os/signal"
@@ -37,6 +38,9 @@ import (
 // @host localhost:8080
 // @BasePath /api/v1
 func main() {
+
+	logger, _ := zap.NewProduction()
+	zap.ReplaceGlobals(logger)
 
 	// 新增配置加载（必须放在最前面）
 	config.LoadConfig()
@@ -120,6 +124,8 @@ func setupDatabase() {
 		&models.SignRecord{},
 		&models.LeaveRequest{},
 		&models.OperationLog{},
+		&models.ChatMessage{},
+		&models.Group{},
 	)
 	if err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
