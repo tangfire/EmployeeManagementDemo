@@ -27,6 +27,15 @@ func Error(code int, message string) ApiResponse {
 	}
 }
 
+// EmployeeProfileResponse models/employee.go
+type EmployeeProfileResponse struct {
+	EmpID    uint   `json:"emp_id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+	DepID    uint   `json:"dep_id"`
+}
+
 // User 定义用户实体
 type User struct {
 	ID   uint   `json:"id"`

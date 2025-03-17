@@ -48,6 +48,7 @@ func SetupAuthRoutes(r *gin.Engine) {
 		//authGroup.POST("/sign-records/sign-out", middleware.RequireRole("employee"), controllers.SignOut)
 		employeeGroup.POST("/sign-records/sign-in", controllers.SignIn)
 		employeeGroup.POST("/sign-records/sign-out", controllers.SignOut)
+		employeeGroup.GET("/attendance", controllers.GetAttendance) // 新增
 
 		employeeGroup.POST("/leave", controllers.CreateLeaveRequest) // 提交请假
 		employeeGroup.GET("/leave", controllers.GetMyLeaveRequests)  // 查看自己的请假记录

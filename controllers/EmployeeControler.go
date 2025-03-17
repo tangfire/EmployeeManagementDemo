@@ -75,7 +75,7 @@ func SignIn(c *gin.Context) {
 	now := time.Now()
 	newRecord := models.SignRecord{
 		EmpID:      userID,
-		SignInTime: &now,
+		SignInTime: now,
 		Date:       now,
 	}
 
@@ -109,7 +109,7 @@ func SignOut(c *gin.Context) {
 
 	// 更新签退时间
 	now := time.Now()
-	record.SignOutTime = &now
+	record.SignOutTime = now
 	if err := config.DB.Save(&record).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "签退失败"})
 		return
@@ -119,6 +119,51 @@ func SignOut(c *gin.Context) {
 		"message":       "签退成功",
 		"sign_out_time": now.Format(time.RFC3339),
 	})
+}
+
+// GetAttendance 新增考勤查询接口（添加到原有签到签退路由旁）
+func GetAttendance(c *gin.Context) {
+	// 鉴权获取当前用户
+	userID, err := utils.GetCurrentUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	// 处理查询参数
+	yearMonth := c.Query("month") // 格式示例：2025-03
+	if yearMonth == "" {
+		c.JSON(http.StatusBadRequest, models.Error(400, "月份参数必填"))
+		return
+	}
+
+	// 计算日期范围
+	startTime, _ := time.Parse("2006-01", yearMonth)
+	endTime := startTime.AddDate(0, 1, -1)
+
+	// 查询数据库
+	var records []models.SignRecord
+	if err := config.DB.Where("emp_id = ? AND date BETWEEN ? AND ?",
+		userID,
+		startTime.Format("2006-01-02"),
+		endTime.Format("2006-01-02"),
+	).Order("date DESC").Find(&records).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.Error(500, "查询失败"))
+		return
+	}
+
+	// 转换为响应格式
+	responseData := make([]map[string]interface{}, len(records))
+	for i, record := range records {
+		responseData[i] = map[string]interface{}{
+			"date":          record.Date.Format("2006-01-02"),
+			"sign_in_time":  record.SignInTime.Format("15:04:05"),
+			"sign_out_time": record.SignOutTime.Format("15:04:05"),
+			"status":        record.Status,
+		}
+	}
+
+	c.JSON(http.StatusOK, models.Success(responseData))
 }
 
 func CreateLeaveRequest(c *gin.Context) {

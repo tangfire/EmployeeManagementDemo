@@ -44,15 +44,6 @@ func (e *Employee) GetRole() string {
 	return "employee" // 标识角色为普通员工
 }
 
-// EmployeeProfileResponse models/employee.go
-type EmployeeProfileResponse struct {
-	EmpID    uint   `json:"emp_id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
-	DepID    uint   `json:"dep_id"`
-}
-
 func (e *Employee) ToProfileResponse() EmployeeProfileResponse {
 	return EmployeeProfileResponse{
 		EmpID:    e.EmpID,
