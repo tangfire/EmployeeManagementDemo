@@ -6,7 +6,7 @@ app:
 
 database:
   mysql:
-    dsn: "root:8888.216@tcp(localhost:3306)/employee_db?charset=utf8mb4&parseTime=True&loc=Local"
+    dsn: "root:8888.216@tcp(localhost:3306)/employee_db?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai"
   redis:
     addr: "localhost:6379"
     password: "8888.216"
